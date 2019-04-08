@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <title>Page Title</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <script src='vector.js'></script>
+    <script src='face2.obj.js'></script>
+</head>
+<body>
+    <canvas id='canvas'>
+
+    </canvas>
+<script>
+
+    function Light(origin, intensity){
+        this.origin=origin;
+        this.intensity=intensity;
+    }
+    function BoundingBox(min, max){
+        this.min=min;
+        this.max=max;
+    }
+    BoundingBox.prototype={
+        doesRayIntersect: function(ray){
+            tmin = (this.min.x - ray.origin.x) / ray.normalizedDirection.x; 
+            tmax = (this.max.x - ray.origin.x) / ray.normalizedDirection.x; 
+        
+            if (tmin > tmax) {
+                temp=tmin;
+                tmin=tmax;
+                tmax=temp;
+            } 
+        
+            tymin = (this.min.y - ray.origin.y) / ray.normalizedDirection.y; 
+            tymax = (this.max.y - ray.origin.y) / ray.normalizedDirection.y; 
+        
+            if (tymin > tymax) {
+                temp=tymin;
+                tymin=tymax;
+                tymax=temp;
+            } 
+        
+            if ((tmin > tymax) || (tymin > tmax)){
+                return false; 
+            }
+
+            if (tymin > tmin){
+                tmin = tymin; 
+            }
+            if (tymax < tmax){ 
+                tmax = tymax; 
+            }
+
+            tzmin = (this.min.z - ray.origin.z) / ray.normalizedDirection.z; 
+            tzmax = (this.max.z - ray.origin.z) / ray.normalizedDirection.z; 
+        
+            if (tzmin > tzmax){
+                temp=tzmin;
+                tzmin=tzmax;
+                tzmax=temp;
+            }  
+        
+            if ((tmin > tzmax) || (tzmin > tmax)){
+                return false; 
+            }
+            if (tzmin > tmin) {
+                tmin = tzmin; 
+            }
+            if (tzmax < tmax) {
+                tmax = tzmax; 
+            }
+            return true;
+        }
+    }
+
+    function Model(geometry){
+        this.geometry=geometry;
+    }
+    Model.prototype={
+        calculateBoundingBox: function(){
+            min= new Vector(Number.MAX_VALUE, Number.MAX_VALUE, Number.MAX_VALUE);
+            max= new Vector(0-Number.MAX_VALUE, 0-Number.MAX_VALUE, 0-Number.MAX_VALUE);
+            for (let i = 0; i < this.geometry.length; i++) {
+                for (let j = 0; j < this.geometry[i].vertecies.length; j++) {
+                    this.geometry[i].vertecies[j].x<=min.x ? 
+                        min.x=this.geometry[i].vertecies[j].x : min.x=min.x;
+                    this.geometry[i].vertecies[j].y<=min.y ? 
+                        min.y=this.geometry[i].vertecies[j].y : min.y=min.y;
+                    this.geometry[i].vertecies[j].z<=min.z ? 
+                        min.z=this.geometry[i].vertecies[j].z : min.z=min.z;
+
+                    this.geometry[i].vertecies[j].x>max.x ? 
+                        max.x=this.geometry[i].vertecies[j].x : max.x=max.x;
+                    this.geometry[i].vertecies[j].y>max.y ? 
+                        max.y=this.geometry[i].vertecies[j].y : max.y=max.y;
+                    this.geometry[i].vertecies[j].z>max.z ? 
+                        max.z=this.geometry[i].vertecies[j].z : max.z=max.z;
+                }
+            }
+            this.boundingBox=new BoundingBox(min, max);
+        },
+        rayIntersect: function(ray){
+            if(this.boundingBox.doesRayIntersect(ray)){
+                ray.findObjectsHit(geometry);
+                ray.sortObjectsByDistance();
+            }
+        },
+        translate: function(){
+
+        },
+        rotate: function(){
+
+        },
+        scale: function(){
+
+        }
+    };
+
+    function Triangle(vertecies, normal, material){
+        this.vertecies=vertecies;
+        this.material=material;
+        this.normal=normal;
+    }
+    Triangle.prototype={
+        rayIntersect: function(ray){
+            //p + t * d = (1-u-v) * p0 + u * p1 + v * p2
+            epsilon=0.0000001;
+            
+            edge1=this.vertecies[1].subtract(this.vertecies[0]);
+            edge2=this.vertecies[2].subtract(this.vertecies[0]);
+            
+            h=ray.normalizedDirection.cross(edge2);
+            a=edge1.dot(h);
+            if (a > -epsilon && a < epsilon){
+                return false;    // This ray is parallel to this triangle.
+            }
+            f=1.0/a;
+            s=ray.origin.subtract(this.vertecies[0]);
+            u=f*s.dot(h);
+            if (u < 0.0 || u > 1.0){
+                return false;
+            }
+            q=s.cross(edge1);
+            v=f*ray.normalizedDirection.dot(q);
+            if (v < 0.0 || u + v > 1.0){
+                return false;
+            }
+            t=f*edge2.dot(q);
+            if(t>epsilon){
+                return new Hit(this, ray.normalizedDirection.multiply(t), this.normal);
+            }
+            return false;
+        }
+    }
+
+    function Hit(object, hitAt, normal){
+        this.object=object;
+        this.hitAt=hitAt;
+        this.normal=normal;
+    }
+
+    function Color(r, g, b, a){
+        this.r=r;
+        this.g=g;
+        this.b=b;
+        this.a=a;
+    }
+
+    function Ray(origin, direction){
+        this.origin=origin;
+        this.direction=direction;
+        this.normalizedDirection=this.direction.normalize();
+        this.objectsHit=[];
+    }
+    Ray.prototype={
+        findObjectsHit: function(hittable){
+            for(let i=0; i<hittable.length; i++){
+                rayIntersect=hittable[i].rayIntersect(this);
+                if(rayIntersect){
+                    this.objectsHit.push(rayIntersect);
+                }
+            }
+        },
+        sortObjectsByDistance: function(){
+            if(this.objectsHit.length>1){
+                this.objectsHit.sort(function(a, b){return a.hitAt.length()-b.hitAt.length();});
+            }
+        },
+        castShadow: function(){
+            for(let i=0; i<hittable.length; i++){
+                rayIntersect=hittable[i].rayIntersect(this);
+                if(rayIntersect){
+                    return true;
+                }
+            }
+            return false;
+        }
+    }
+    
+    function Material(color, roughness, metalness){
+        this.color=color;
+        this.roughness=roughness;
+        this.metalness=metalness;
+    }
+
+    function Sphere(origin, radius, material){
+        this.origin=origin;
+        this.radius=radius;
+        this.material=material;
+    }
+    Sphere.prototype={
+        rayIntersect: function(ray){
+            if(ray.normalizedDirection.dot(this.origin)<=0){
+                
+                return false;
+            }
+            
+            sphereProjectionOnRay=
+                ray.normalizedDirection.multiply
+                (ray.normalizedDirection.dot(this.origin)/ray.normalizedDirection.length());
+
+            pointOnRay=ray.origin.add(sphereProjectionOnRay);
+
+            distanceToRay=this.origin.subtract(pointOnRay).length();
+            
+            if(distanceToRay==this.radius){
+                return new Hit(this, pointOnRay, pointOnRay.subtract(this.origin).normalize());
+            }
+            if(distanceToRay<this.radius){
+
+                originToSphereDistance=ray.origin.subtract(this.origin).length();
+
+                a=this.radius;
+                b=pointOnRay.subtract(this.origin).length();
+                c=Math.sqrt((a*a)-(b*b));
+
+                if(originToSphereDistance>this.radius){
+                    distanceToIntersection=pointOnRay.subtract(ray.origin).length()-c;
+                }
+                else if(originToSphereDistance<=this.radius){
+                    distanceToIntersection=pointOnRay.subtract(ray.origin).length()+c;
+                }
+
+                intersectionPoint=ray.origin.add(ray.normalizedDirection.multiply(distanceToIntersection));
+                
+                return new Hit(this, intersectionPoint, intersectionPoint.subtract(this.origin).normalize());
+            }
+            return false;
+        }
+    }
+
+    function render(width, height, fov, canvas, hittable, lights){
+        pixelCount=width*height;
+        canvas.width=width;
+        canvas.height=height;
+        ctx=canvas.getContext("2d");
+        data=ctx.getImageData(0, 0, width, height);
+        //calculate increments fo real world ray directions
+        angleB=fov/2;
+        angleC=90;
+        angleA=180-angleB-angleC;
+
+        sideA=1;
+        sideB=sideA*Math.tan(angleB*Math.PI/180);
+        sideC=Math.sqrt((sideA*sideA)+(sideB*sideB));
+        
+        cameraWidth=sideB*2
+        cameraHeight=cameraWidth/(width/height);
+
+        cameraXStart=0-sideB;
+        cameraYStart=cameraHeight/2;
+        cameraXEnd=sideB;
+        cameraYEnd=0-(cameraHeight/2);
+
+        cameraZ=-1;
+
+        xIncrement=cameraWidth/width;
+        yIncrement=cameraHeight/height;
+
+        origin=new Vector(0, 0, 0);
+
+        colorCounter=0;
+
+        for (let i = 0; i<height; i++) {
+            
+            for(let j=0; j<width; j++){
+                
+                //cast ray
+                rayDirection=new Vector(
+                    cameraXStart+(xIncrement*(j+1)),
+                    cameraYStart-(yIncrement*(i+1)),
+                    cameraZ
+                );
+
+                ray=new Ray(origin, rayDirection);
+                ray.findObjectsHit(hittable);
+                ray.sortObjectsByDistance();
+                                                
+                if(ray.objectsHit.length>0){
+                    // normals debug
+                    // data.data[colorCounter+0]=ray.objectsHit[0].normal.x*255;
+                    // data.data[colorCounter+1]=ray.objectsHit[0].normal.y*255;
+                    // data.data[colorCounter+2]=ray.objectsHit[0].normal.z*255;
+                    // data.data[colorCounter+3]=255;
+
+                    //paint color
+                    data.data[colorCounter+0]=ray.objectsHit[0].object.material.color.r;
+                    data.data[colorCounter+1]=ray.objectsHit[0].object.material.color.g;
+                    data.data[colorCounter+2]=ray.objectsHit[0].object.material.color.b;
+                    data.data[colorCounter+3]=ray.objectsHit[0].object.material.color.a;
+
+                    //paint difuse
+                    light=lights[0];
+                    lightDirection=ray.objectsHit[0].hitAt.subtract(light.origin).normalize();
+                    incidence=1-((lightDirection.dot(ray.objectsHit[0].normal)+1)/2);
+
+                    data.data[colorCounter+0]=data.data[colorCounter+0]*incidence;
+                    data.data[colorCounter+1]=data.data[colorCounter+1]*incidence;
+                    data.data[colorCounter+2]=data.data[colorCounter+2]*incidence;
+
+
+                    //paint shadow
+                    
+                }
+                // else{
+                //     data.data[colorCounter+0]=150;
+                //     data.data[colorCounter+1]=150;
+                //     data.data[colorCounter+2]=150;
+                //     data.data[colorCounter+3]=255;
+                // }
+                colorCounter=colorCounter+4;
+            }//end of line loop
+
+        }//end of column loop
+        ctx.putImageData(data, 0, 0);
+        
+    };
+    width=640;
+    height=480;
+    fov=90;
+    canvas=document.getElementById("canvas");
+   
+    geometry=[];
+    for (let i = 0; i < parsedModel.faces.length; i++) {
+        geometry.push(new Triangle(
+            [
+                parsedModel.vertecies[parsedModel.faces[i][0].vertex-1],
+                parsedModel.vertecies[parsedModel.faces[i][1].vertex-1],
+                parsedModel.vertecies[parsedModel.faces[i][2].vertex-1]
+            ],
+            parsedModel.normals[parsedModel.faces[i][0].normal-1].normalize(),
+            new Material(new Color(225, 225, 225, 255), 0, 0)
+
+        ));
+        
+    }
+
+    model=new Model(geometry);
+    model.calculateBoundingBox();
+
+    hittable=[
+        model
+        //new Triangle([new Vector(-3, 0, -16), new Vector(-1, -1.5, -12), new Vector(1.5, 0.5, -18)], new Vector(0, 0, 1), new Material(new Color(38, 110, 226, 255), 0, 0))
+        //new Sphere(new Vector(-3, 0, -16), 2, new Material(new Color(255, 153, 204, 255), 0, 0)),
+        //new Sphere(new Vector(-1, -1.5, -12), 2, new Material(new Color(200, 200, 200, 255), 0, 0)),
+        //new Sphere(new Vector(1.5, 0.5, -18), 3, new Material(new Color(131, 244, 66, 255), 0, 0)),
+        //new Sphere(new Vector(7, 5, -18), 4, new Material(new Color(38, 110, 226, 255), 0, 0))
+    ];
+
+    lights=[
+        new Light(new Vector(-20, 20, 20), 1)
+    ];
+
+
+    render(width, height, fov, canvas, hittable, lights);
+
+</script>
+</body>
+</html>
